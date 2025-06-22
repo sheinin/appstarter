@@ -257,6 +257,88 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MaterialTable(items: List<TableItem>, callback: (delay: Int, item: TableItem) -> Unit) {
+    @Composable
+    fun Table(items: List<TableItem>, callback: (delay: Int, item: TableItem) -> Unit) {
+        @Composable
+        fun TableRow(item: TableItem, callback: (delay: Int, item: TableItem) -> Unit) {
+            @SuppressLint("DefaultLocale")
+            fun formatMinutesToHHMMSS(totalSeconds: Int): String {
+                if (totalSeconds == Int.MAX_VALUE) return "--"
+                val hours = totalSeconds / 3600
+                val minutes = (totalSeconds % 3600) / 60
+                val seconds = totalSeconds % 60
+                val timeParts = mutableListOf<String>()
+                timeParts.add(minutes.toString())
+                if (hours > 0) timeParts.add(hours.toString())
+                timeParts.add(seconds.let { if (it < 10) "0$it" else it.toString() })
+                return timeParts.joinToString(":")
+            }
+            var expanded by remember { mutableStateOf(false) }
+            var delay by remember { mutableIntStateOf(item.delay) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (item.icon != null)
+                    Image(
+                        bitmap = item.icon.toBitmap().asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .width(42.dp)
+                            .height(42.dp)
+                    )
+                else
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .width(42.dp)
+                            .height(42.dp)
+                    )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(item.title, modifier = Modifier.weight(1f), overflow = TextOverflow.Ellipsis)
+                Spacer(modifier = Modifier.width(8.dp))
+                Box {
+                    Button(
+                        onClick = { expanded = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (delay == Int.MAX_VALUE) Color.Gray else Color.Green,
+                        ),
+                        content = {
+                            Text(formatMinutesToHHMMSS(delay))
+                        }
+                    )
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        listOf(
+                            Int.MAX_VALUE to "--",
+                            5 to "5 sec",
+                            10 to "10 sec",
+                            30 to "30 sec",
+                            60 to "1 min",
+                            300 to "5 min",
+                            600 to "10 min"
+                        ).map {
+                            DropdownMenuItem(
+                                onClick = {
+                                    expanded = false
+                                    delay = it.first
+                                    callback(delay, item)
+                                },
+                                text = { Text(it.second) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Column {
+            items.sortedBy { it.title }.forEach { item ->
+                TableRow(item, callback)
+            }
+        }
+    }
     Column(modifier = Modifier
         .fillMaxSize()
         .padding(8.dp)
@@ -265,89 +347,6 @@ fun MaterialTable(items: List<TableItem>, callback: (delay: Int, item: TableItem
     }
 }
 
-@Composable
-fun Table(items: List<TableItem>, callback: (delay: Int, item: TableItem) -> Unit) {
-    Column {
-        items.sortedBy { it.title }.forEach { item ->
-            TableRow(item, callback)
-        }
-    }
-}
-
-@Composable
-fun TableRow(item: TableItem, callback: (delay: Int, item: TableItem) -> Unit) {
-    @SuppressLint("DefaultLocale")
-    fun formatMinutesToHHMMSS(totalSeconds: Int): String {
-        if (totalSeconds == Int.MAX_VALUE) return "--"
-        val hours = totalSeconds / 3600
-        val minutes = (totalSeconds % 3600) / 60
-        val seconds = totalSeconds % 60
-        val timeParts = mutableListOf<String>()
-        timeParts.add(minutes.toString()) // Always show minutes
-        if (hours > 0) timeParts.add(hours.toString())
-        timeParts.add(seconds.let { if (it < 10) "0$it" else it.toString() })
-        return timeParts.joinToString(":")
-    }
-    var expanded by remember { mutableStateOf(false) }
-    var delay by remember { mutableIntStateOf(item.delay) }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (item.icon != null)
-            Image(
-                bitmap = item.icon.toBitmap().asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier
-                    .width(42.dp)
-                    .height(42.dp)
-            )
-        else
-            Icon(
-                Icons.Filled.Star,
-                contentDescription = null,
-                modifier = Modifier
-                    .width(42.dp)
-                    .height(42.dp)
-            )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(item.title, modifier = Modifier.weight(1f), overflow = TextOverflow.Ellipsis)
-        Spacer(modifier = Modifier.width(8.dp))
-        Box {
-            Button(
-                onClick = { expanded = true },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (delay == Int.MAX_VALUE) Color.Gray else Color.Green,
-                ),
-                content = {
-                    Text(formatMinutesToHHMMSS(delay))
-                }
-            )
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                listOf(
-                    Int.MAX_VALUE to "--",
-                    5 to "5 sec",
-                    10 to "10 sec",
-                    30 to "30 sec",
-                    60 to "1 min",
-                    300 to "5 min",
-                    600 to "10 min"
-                ).map {
-                    DropdownMenuItem(
-                        onClick = {
-                            expanded = false
-                            delay = it.first
-                            callback(delay, item)
-                        },
-                        text = { Text(it.second) }
-                    )
-                }
-            }
-        }
-    }
-}
 
 data class TableItem(
     var delay: Int,
