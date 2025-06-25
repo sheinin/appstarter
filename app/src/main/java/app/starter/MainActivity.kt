@@ -23,6 +23,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,34 +37,52 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MaterialTheme.typography
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.MutableLiveData
 import app.starter.ui.theme.AppTheme
 import com.google.accompanist.drawablepainter.DrawablePainter
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import java.io.Serializable
+import java.util.concurrent.TimeUnit
+import kotlin.math.pow
 
 
 val list = mutableListOf<TableItem>()
@@ -85,7 +104,7 @@ class MainActivity : ComponentActivity() {
                     val requestPermissionLauncher = registerForActivityResult(
                         ActivityResultContracts.RequestPermission(),
                     ) { isGranted: Boolean -> }
-                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                  //  requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             }
             fun isAccessibilityServiceEnabled(
@@ -105,20 +124,21 @@ class MainActivity : ComponentActivity() {
                 }
                 return false
             }
-            if (!isAccessibilityServiceEnabled(this, AppService::class.java)) {
-                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                startActivity(intent)
-            }
+            //if (!isAccessibilityServiceEnabled(this, AppService::class.java)) {
+            //    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            //    startActivity(intent)
+           // }
         }
         if (myConnection == null && list.isEmpty()) requestPermissions()
-        //qqq("START"+myConnection+list.size+myService)
         bind()
         if (list.isEmpty()) {
             setContent {
                 AppTheme {
                     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                         Column(
-                            Modifier.padding(innerPadding).fillMaxSize(),
+                            Modifier
+                                .padding(innerPadding)
+                                .fillMaxSize(),
                             verticalArrangement = Arrangement.Center,
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
@@ -126,6 +146,7 @@ class MainActivity : ComponentActivity() {
                                 painter = DrawablePainter(packageManager.getApplicationIcon(applicationInfo)),
                                 contentDescription = null
                             )
+                            Text("Loading...", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(16.dp))
                         }
                     }
                 }
@@ -201,9 +222,19 @@ class MainActivity : ComponentActivity() {
     }
     private fun content() {
         setContent {
-            var switch by remember { mutableStateOf(true) }
+            val showSheet by vm.showSheet.collectAsState()
+            var switch by remember { mutableStateOf(true) } // For preview, initially show { mutableStateOf(vm.showSheet.value) } // For preview, initially show
+            var sliderValue by remember { mutableFloatStateOf(0.5f) }
             AppTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                Scaffold(
+                    floatingActionButton = {
+                        val coroutineScope = rememberCoroutineScope()
+                        FloatingActionButton(onClick = { coroutineScope.launch {  } }) {
+                            Icon(Icons.Default.Info, contentDescription = "Show Bottom Sheet")
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                ) { innerPadding ->
                     Column(Modifier.padding(innerPadding)) {
                         Row {
                             Text(
@@ -232,6 +263,10 @@ class MainActivity : ComponentActivity() {
                             myService?.list = list.filter { it.delay != Int.MAX_VALUE }
                         }
                         MaterialTable(list, ::callback)
+                        BottomSheetWithSliderAndClose(
+                            showSheet = showSheet,
+                            onDismissRequest = { vm.showSheet.value = null },
+                        )
                     }
                 }
             }
@@ -249,14 +284,16 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         if (myConnection != null && isBound) {
-            //list.clear()
-            applicationContext.unbindService(myConnection!!);
+            applicationContext.unbindService(myConnection!!)
         }
     }
 }
 
 @Composable
-fun MaterialTable(items: List<TableItem>, callback: (delay: Int, item: TableItem) -> Unit) {
+fun MaterialTable(
+    items: List<TableItem>,
+    callback: (delay: Int, item: TableItem) -> Unit
+    ) {
     @Composable
     fun Table(items: List<TableItem>, callback: (delay: Int, item: TableItem) -> Unit) {
         @Composable
@@ -277,6 +314,9 @@ fun MaterialTable(items: List<TableItem>, callback: (delay: Int, item: TableItem
             var delay by remember { mutableIntStateOf(item.delay) }
             Row(
                 modifier = Modifier
+                    .clickable {
+                        qqq("click! "+item)
+                        vm.showSheet.value = item }
                     .fillMaxWidth()
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -347,6 +387,91 @@ fun MaterialTable(items: List<TableItem>, callback: (delay: Int, item: TableItem
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BottomSheetWithSliderAndClose(
+    showSheet: TableItem?,
+    onDismissRequest: () -> Unit
+) {
+
+    fun formatSecondsToHHMMSS(s: Float): String {
+        val seconds = s.toLong()
+        val hours = TimeUnit.SECONDS.toHours(seconds)
+        val minutes = TimeUnit.SECONDS.toMinutes(seconds) % 60
+        val remainingSeconds = seconds % 60
+        qqq("formatSecondsToHHMMSS"+s+ " "+seconds)
+        return when {
+            hours > 0 -> String.format("%dhr %dmin", hours, minutes)
+            minutes > 0 -> String.format("%dmin %2dsec", minutes, remainingSeconds)
+            else -> String.format("%2dsec", remainingSeconds)
+        }
+    }
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true // You can set this to false if you want a partially expanded state
+    )
+    val scope = rememberCoroutineScope()
+
+    if (showSheet != null) {
+        ModalBottomSheet(
+            onDismissRequest = onDismissRequest,
+            sheetState = sheetState,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                IconButton(
+                    onClick = {
+                        scope.launch { sheetState.hide() }.invokeOnCompletion {
+                            if (!sheetState.isVisible) {
+                                onDismissRequest()
+                            }
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close Bottom Sheet")
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                var currentSliderValue by remember { mutableFloatStateOf(0f) }
+                Text("Adjust Value: "+
+
+                    //if (currentSliderValue < .33f)
+                        formatSecondsToHHMMSS(24 * 3600 * currentSliderValue.pow(3))
+                    //else if (currentSliderValue < .66f)
+                     //   formatSecondsToHHMMSS(24 * 3600 * currentSliderValue / 2)
+                    //else
+                      //  formatSecondsToHHMMSS(24 * 3600 * currentSliderValue)
+
+                )
+                Slider(
+                    value = currentSliderValue,
+                    onValueChange = { newValue ->
+                        currentSliderValue = newValue
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = {
+                        scope.launch { sheetState.hide() }.invokeOnCompletion {
+                            if (!sheetState.isVisible) {
+                                onDismissRequest()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Apply")
+                }
+            }
+        }
+    }
+}
+
 
 data class TableItem(
     var delay: Int,
@@ -360,3 +485,8 @@ data class TableItem(
 fun qqq(text: String) {
     Log.d("qqq", text)
 }
+
+class VM: androidx.lifecycle.ViewModel() {
+    var showSheet = MutableStateFlow<TableItem?>(null)
+}
+val vm = VM()
