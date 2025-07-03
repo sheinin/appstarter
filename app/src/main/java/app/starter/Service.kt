@@ -94,7 +94,7 @@ class StartService : Service() {
                     if (
                         !lock &&
                         lastAppId != it.id &&
-                        (System.currentTimeMillis() - it.ts) / 1000 > it.delay
+                        (System.currentTimeMillis() - it.timestamp) / 1000 > it.delay
                     ) {
                        // qqq("RUN TASK" + lastAppId + "::" + it.id + " " + it.cls+ " "+(System.currentTimeMillis() - it.ts) / 1000)
                         if (lastAppId != packageName && lastAppId != "com.android.systemui") notification.contentIntent.send()
@@ -102,7 +102,7 @@ class StartService : Service() {
                         val intent = Intent(Intent.ACTION_MAIN, null)
                         intent.addCategory(Intent.CATEGORY_LAUNCHER)
                         lastAppId = it.id
-                        list[ix].ts = System.currentTimeMillis()
+                        list[ix].timestamp = System.currentTimeMillis()
                         intent.component = ComponentName(
                             it.id,
                             it.cls

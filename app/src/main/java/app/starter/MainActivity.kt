@@ -7,6 +7,7 @@ import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
+import android.content.Context.ACCESSIBILITY_SERVICE
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
@@ -19,10 +20,12 @@ import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.accessibility.AccessibilityManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,21 +36,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.ModalBottomSheet
@@ -57,41 +62,53 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import androidx.core.content.ContextCompat.startActivity
 import androidx.core.content.edit
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.ViewModel
+import app.starter.MainActivity
 import app.starter.ui.theme.AppTheme
 import com.google.accompanist.drawablepainter.DrawablePainter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.io.Serializable
 import java.util.concurrent.TimeUnit
+import kotlin.contracts.contract
+import kotlin.math.absoluteValue
+import kotlin.math.cbrt
 import kotlin.math.pow
+import kotlin.math.sqrt
 
 
-val list = mutableListOf<TableItem>()
 var myConnection: ServiceConnection? = null
 var myService: StartService? = null
 
 class MainActivity : ComponentActivity() {
     private var isBound = false
-    @SuppressLint("QueryPermissionsNeeded")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         fun requestPermissions() {
@@ -107,82 +124,13 @@ class MainActivity : ComponentActivity() {
                   //  requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             }
-            fun isAccessibilityServiceEnabled(
-                context: Context,
-                service: Class<out AccessibilityService?>
-            ): Boolean {
-                val am = context.getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager
-                val enabledServices: List<AccessibilityServiceInfo> =
-                    am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-                for (enabledService in enabledServices) {
-                    val enabledServiceInfo = enabledService.resolveInfo.serviceInfo
-                    if (enabledServiceInfo.packageName == context.packageName &&
-                        enabledServiceInfo.name == service.name
-                    ) {
-                        return true
-                    }
-                }
-                return false
-            }
-            //if (!isAccessibilityServiceEnabled(this, AppService::class.java)) {
-            //    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            //    startActivity(intent)
-           // }
         }
-        if (myConnection == null && list.isEmpty()) requestPermissions()
+        if (myConnection == null && vm.list.isEmpty() == true) requestPermissions()
         bind()
-        if (list.isEmpty()) {
-            setContent {
-                AppTheme {
-                    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                        Column(
-                            Modifier
-                                .padding(innerPadding)
-                                .fillMaxSize(),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Image(
-                                painter = DrawablePainter(packageManager.getApplicationIcon(applicationInfo)),
-                                contentDescription = null
-                            )
-                            Text("Loading...", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(16.dp))
-                        }
-                    }
-                }
-            }
-            sleep(1000) {
-                if (list.isEmpty()) {
-                    val packages = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
-                    for (packageInfo in packages) {
-                        if (packageInfo.packageName != packageName) {
-                            val cls = packageManager.getLaunchIntentForPackage(packageInfo.packageName)?.component?.className
-                            if (cls != null) {
-                                var icon: Drawable? = null
-                                try {
-                                    icon = packageManager.getApplicationIcon(packageInfo.processName)
-                                } catch (_: Exception) {
-                                }
-                                val pref = getPreferences(this)
-                                list.add(
-                                    TableItem(
-                                        delay = pref.getInt(packageInfo.processName, Int.MAX_VALUE),
-                                        icon = icon,
-                                        id = packageInfo.processName,
-                                        cls = cls,
-                                        title = packageInfo.loadLabel(packageManager).toString(),
-                                        ts = System.currentTimeMillis()
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
-                myService?.list = list.filter { it.delay != Int.MAX_VALUE }
-                content()
-            }
-        } else content()
+        if (vm.list.isEmpty() == true) loading()
+        else content()
     }
+
     private fun bind() {
         if (myConnection != null) return
         myConnection = object : ServiceConnection {
@@ -196,7 +144,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 val binder = service as StartService.MyLocalBinder
                 myService = binder.getService()
-                myService?.list = list.filter { it.delay != Int.MAX_VALUE }
+                myService?.list = vm.list.filter { it.delay > 0 }
                 isBound = true
             }
             override fun onServiceDisconnected(name: ComponentName) {
@@ -224,7 +172,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val showSheet by vm.showSheet.collectAsState()
             var switch by remember { mutableStateOf(true) } // For preview, initially show { mutableStateOf(vm.showSheet.value) } // For preview, initially show
-            var sliderValue by remember { mutableFloatStateOf(0.5f) }
+            var showTable by remember { mutableStateOf(false) }
             AppTheme {
                 Scaffold(
                     floatingActionButton = {
@@ -254,22 +202,106 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(16.dp, 8.dp)
                             )
                         }
-                        fun callback(delay: Int, item: TableItem) {
+                        fun callback(delay: Int) {
+                            qqq("cb "+delay)
                             val pref = getPreferences(this@MainActivity)
-                            item.delay = delay
-                            item.ts = System.currentTimeMillis()
-                            if (delay == Int.MAX_VALUE) pref.edit(commit = true) { remove(item.id) }
-                            else pref.edit(commit = true) { putInt(item.id, delay) }
-                            myService?.list = list.filter { it.delay != Int.MAX_VALUE }
+                            val index = vm.list.indexOfFirst { it.id == showSheet?.id }
+                            if (index != -1) {
+                                vm.list[index] = vm.list[index].copy(
+                                    delay = delay, timestamp = System.currentTimeMillis()
+                                )
+                            }
+                            if (delay > 0) {
+                                fun isAccessibilityServiceEnabled(
+                                    context: Context,
+                                    service: Class<out AccessibilityService?>
+                                ): Boolean {
+                                    val am = context.getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
+                                    val enabledServices: List<AccessibilityServiceInfo> =
+                                        am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                                    for (enabledService in enabledServices) {
+                                        val enabledServiceInfo = enabledService.resolveInfo.serviceInfo
+                                        if (enabledServiceInfo.packageName == context.packageName &&
+                                            enabledServiceInfo.name == service.name
+                                        ) {
+                                            return true
+                                        }
+                                    }
+                                    return false
+                                }
+                                if (!isAccessibilityServiceEnabled(this@MainActivity, AppService::class.java)) {
+                                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                    startActivity(intent)
+                                }
+                            }
+                            if (delay == 0) pref.edit(commit = true) { remove(showSheet?.id) }
+                            else pref.edit(commit = true) { putInt(showSheet?.id, delay) }
+                            myService?.list = vm.list.filter { it.delay > 0 }
+                            vm.showSheet.value = null
                         }
-                        MaterialTable(list, ::callback)
+                        LaunchedEffect(Unit) {
+                            delay(1)
+                            showTable = true
+                        }
+                        if (showTable) SimpleTable()
                         BottomSheetWithSliderAndClose(
-                            showSheet = showSheet,
+                            item = showSheet,
                             onDismissRequest = { vm.showSheet.value = null },
+                            callback = ::callback
                         )
                     }
                 }
             }
+        }
+    }
+    @SuppressLint("QueryPermissionsNeeded")
+    private fun loading() {
+        setContent {
+            AppTheme {
+                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    Column(
+                        Modifier
+                            .padding(innerPadding)
+                            .fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Image(
+                            painter = DrawablePainter(packageManager.getApplicationIcon(applicationInfo)),
+                            contentDescription = null
+                        )
+                        Text("Loading...", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(16.dp))
+                    }
+                }
+            }
+        }
+        sleep(1000) {
+            if (vm.list.isEmpty() == true) {
+                val packages = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+                for (packageInfo in packages) {
+                    if (packageInfo.packageName != packageName) {
+                        val cls = packageManager.getLaunchIntentForPackage(packageInfo.packageName)?.component?.className
+                        if (cls != null) {
+                            var icon: Drawable? = null
+                            try {
+                                icon = packageManager.getApplicationIcon(packageInfo.processName)
+                            } catch (_: Exception) { }
+                            vm.list.add(
+                                TableItem(
+                                    delay = getPreferences(this).getInt(packageInfo.processName, 0),
+                                    icon = icon,
+                                    id = packageInfo.processName,
+                                    cls = cls,
+                                    title = packageInfo.loadLabel(packageManager).toString(),
+                                    timestamp = System.currentTimeMillis()
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            myService?.list = vm.list.filter { it.delay != 0 }
+            content()
         }
     }
     fun sleep(delay: Long, callback: (() -> Unit)) { Handler(Looper.getMainLooper()).postDelayed({ callback.invoke() }, delay) }
@@ -289,129 +321,105 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+
 @Composable
-fun MaterialTable(
-    items: List<TableItem>,
-    callback: (delay: Int, item: TableItem) -> Unit
-    ) {
-    @Composable
-    fun Table(items: List<TableItem>, callback: (delay: Int, item: TableItem) -> Unit) {
-        @Composable
-        fun TableRow(item: TableItem, callback: (delay: Int, item: TableItem) -> Unit) {
-            @SuppressLint("DefaultLocale")
-            fun formatMinutesToHHMMSS(totalSeconds: Int): String {
-                if (totalSeconds == Int.MAX_VALUE) return "--"
-                val hours = totalSeconds / 3600
-                val minutes = (totalSeconds % 3600) / 60
-                val seconds = totalSeconds % 60
-                val timeParts = mutableListOf<String>()
-                timeParts.add(minutes.toString())
-                if (hours > 0) timeParts.add(hours.toString())
-                timeParts.add(seconds.let { if (it < 10) "0$it" else it.toString() })
-                return timeParts.joinToString(":")
-            }
-            var expanded by remember { mutableStateOf(false) }
-            var delay by remember { mutableIntStateOf(item.delay) }
+fun SimpleTable() {
+    var list = remember(vm.list) { vm.list }
+    LazyColumn {
+        items(list.sortedBy { it.title }, key = { it.id }) { rowData ->
             Row(
                 modifier = Modifier
-                    .clickable {
-                        qqq("click! "+item)
-                        vm.showSheet.value = item }
                     .fillMaxWidth()
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(8.dp)
             ) {
-                if (item.icon != null)
-                    Image(
-                        bitmap = item.icon.toBitmap().asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .width(42.dp)
-                            .height(42.dp)
-                    )
-                else
-                    Icon(
-                        Icons.Filled.Star,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .width(42.dp)
-                            .height(42.dp)
-                    )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(item.title, modifier = Modifier.weight(1f), overflow = TextOverflow.Ellipsis)
-                Spacer(modifier = Modifier.width(8.dp))
-                Box {
-                    Button(
-                        onClick = { expanded = true },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (delay == Int.MAX_VALUE) Color.Gray else Color.Green,
-                        ),
-                        content = {
-                            Text(formatMinutesToHHMMSS(delay))
-                        }
-                    )
-                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        listOf(
-                            Int.MAX_VALUE to "--",
-                            5 to "5 sec",
-                            10 to "10 sec",
-                            30 to "30 sec",
-                            60 to "1 min",
-                            300 to "5 min",
-                            600 to "10 min"
-                        ).map {
-                            DropdownMenuItem(
-                                onClick = {
-                                    expanded = false
-                                    delay = it.first
-                                    callback(delay, item)
-                                },
-                                text = { Text(it.second) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        Column {
-            items.sortedBy { it.title }.forEach { item ->
-                TableRow(item, callback)
+                TableRow(rowData)
             }
         }
     }
-    Column(modifier = Modifier
-        .fillMaxSize()
-        .padding(8.dp)
-        .verticalScroll(rememberScrollState())) {
-        Table(items, callback)
+}
+
+@Composable
+fun TableRow(item: TableItem) {
+    @SuppressLint("DefaultLocale")
+    fun formatMinutesToHHMMSS(totalSeconds: Int): String {
+        if (totalSeconds == Int.MAX_VALUE) return "--"
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        val timeParts = mutableListOf<String>()
+        if (hours > 0) timeParts.add(hours.toString())
+        timeParts.add(minutes.toString())
+        timeParts.add(seconds.let { if (it < 10) "0$it" else it.toString() })
+        return timeParts.joinToString(":")
+    }
+    var expanded by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .clickable { vm.showSheet.value = item }
+            .fillMaxWidth()
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (item.icon != null)
+            Image(
+                bitmap = item.icon.toBitmap().asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier
+                    .width(42.dp)
+                    .height(42.dp)
+            )
+        else
+            Icon(
+                Icons.Filled.Star,
+                contentDescription = null,
+                modifier = Modifier
+                    .width(42.dp)
+                    .height(42.dp)
+            )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(item.title, modifier = Modifier.weight(1f), overflow = TextOverflow.Ellipsis)
+        Spacer(modifier = Modifier.width(8.dp))
+        qqq("DEL DISP "+item.delay)
+        if (item.delay != 0)
+            Button(
+                onClick = { expanded = true },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (item.delay <= 0) Color.Gray else Color.Green,
+                ),
+                content = {
+                    Text(formatMinutesToHHMMSS(item.delay.absoluteValue))
+                }
+            )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BottomSheetWithSliderAndClose(
-    showSheet: TableItem?,
-    onDismissRequest: () -> Unit
+    item: TableItem?,
+    onDismissRequest: () -> Unit,
+    callback: (delay: Int) -> Unit
 ) {
-
+    @SuppressLint("DefaultLocale")
     fun formatSecondsToHHMMSS(s: Float): String {
         val seconds = s.toLong()
         val hours = TimeUnit.SECONDS.toHours(seconds)
         val minutes = TimeUnit.SECONDS.toMinutes(seconds) % 60
         val remainingSeconds = seconds % 60
-        qqq("formatSecondsToHHMMSS"+s+ " "+seconds)
         return when {
-            hours > 0 -> String.format("%dhr %dmin", hours, minutes)
+            hours > 0 -> {
+                if (minutes > 0) String.format("%dhr %dmin", hours, minutes)
+                else String.format("%dhr %dmin", hours, minutes)
+            }
             minutes > 0 -> String.format("%dmin %2dsec", minutes, remainingSeconds)
             else -> String.format("%2dsec", remainingSeconds)
         }
     }
     val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true // You can set this to false if you want a partially expanded state
+        skipPartiallyExpanded = true
     )
-    val scope = rememberCoroutineScope()
-
-    if (showSheet != null) {
+    val showDialog = remember { mutableStateOf(false) }
+    if (item != null) {
         ModalBottomSheet(
             onDismissRequest = onDismissRequest,
             sheetState = sheetState,
@@ -421,51 +429,100 @@ fun BottomSheetWithSliderAndClose(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.Start
             ) {
-                IconButton(
-                    onClick = {
-                        scope.launch { sheetState.hide() }.invokeOnCompletion {
-                            if (!sheetState.isVisible) {
-                                onDismissRequest()
-                            }
-                        }
-                    },
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close Bottom Sheet")
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    if (item.icon != null)
+                        Image(
+                            bitmap = item.icon.toBitmap().asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .width(56.dp)
+                                .height(56.dp)
+                        )
+                    else
+                        Icon(
+                            Icons.Filled.Star,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .width(56.dp)
+                                .height(56.dp)
+                        )
+                    Column(modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Text(item.title, fontSize = 16.sp)
+                        Text(item.id, fontSize = 14.sp)
+                    }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                var currentSliderValue by remember { mutableFloatStateOf(0f) }
-                Text("Adjust Value: "+
-
-                    //if (currentSliderValue < .33f)
-                        formatSecondsToHHMMSS(24 * 3600 * currentSliderValue.pow(3))
-                    //else if (currentSliderValue < .66f)
-                     //   formatSecondsToHHMMSS(24 * 3600 * currentSliderValue / 2)
-                    //else
-                      //  formatSecondsToHHMMSS(24 * 3600 * currentSliderValue)
-
-                )
+                var currentSliderValue by remember { mutableFloatStateOf(cbrt(item.delay.toFloat().absoluteValue / 24 / 3600)) }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.Settings, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(36.dp).rotate(270f))
+                    }
+                    Text(
+                        formatSecondsToHHMMSS(24 * 3600 * currentSliderValue.pow(3)))
+                }
                 Slider(
                     value = currentSliderValue,
                     onValueChange = { newValue ->
                         currentSliderValue = newValue
                     },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
                 )
                 Spacer(modifier = Modifier.height(24.dp))
-                Button(
-                    onClick = {
-                        scope.launch { sheetState.hide() }.invokeOnCompletion {
-                            if (!sheetState.isVisible) {
-                                onDismissRequest()
+                LaunchedEffect(Unit) {}
+
+                var ctx = LocalContext.current
+                if (showDialog.value) Dialog(onDismissRequest = {}) { }
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { callback((currentSliderValue.pow(3) * 3600 * 24).toInt().unaryMinus()) },
+                        colors = ButtonColors(
+                            containerColor = Color.White.copy(alpha = .5f),
+                            contentColor = ButtonDefaults.buttonColors().contentColor,
+                            disabledContainerColor = ButtonDefaults.buttonColors().disabledContainerColor,
+                            disabledContentColor = ButtonDefaults.buttonColors().disabledContentColor
+                        ),
+                        modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
+                    ) {
+                        Text("OK")
+                    }
+                    Button(
+                        onClick = {
+                            fun isAccessibilityServiceEnabled(
+                                context: Context,
+                                service: Class<out AccessibilityService?>
+                            ): Boolean {
+                                val am = context.getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
+                                val enabledServices: List<AccessibilityServiceInfo> =
+                                    am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                                for (enabledService in enabledServices) {
+                                    val enabledServiceInfo = enabledService.resolveInfo.serviceInfo
+                                    if (enabledServiceInfo.packageName == context.packageName &&
+                                        enabledServiceInfo.name == service.name
+                                    ) {
+                                        return true
+                                    }
+                                }
+                                return false
                             }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Apply")
+                            if (!isAccessibilityServiceEnabled(ctx, AppService::class.java)) { showDialog.value = true }
+                            if (!isAccessibilityServiceEnabled(ctx, AppService::class.java)) {
+                                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                ctx.startActivity(intent)
+                            }
+                            callback((currentSliderValue.pow(3) * 3600 * 24).toInt()) },
+                        modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
+                    ) {
+                        Text("Apply")
+                    }
                 }
             }
         }
@@ -474,19 +531,20 @@ fun BottomSheetWithSliderAndClose(
 
 
 data class TableItem(
-    var delay: Int,
-    var ts: Long,
     val icon: Drawable?,
     val id: String,
     val cls: String,
-    val title: String
+    val title: String,
+    var delay: Int,
+    var timestamp: Long,
 ) : Serializable
 
 fun qqq(text: String) {
     Log.d("qqq", text)
 }
 
-class VM: androidx.lifecycle.ViewModel() {
+class VM: ViewModel() {
+    val list = mutableStateListOf<TableItem>()
     var showSheet = MutableStateFlow<TableItem?>(null)
 }
 val vm = VM()
