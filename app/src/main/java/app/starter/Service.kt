@@ -29,7 +29,6 @@ class StartService : Service() {
     private var isServiceStarted = false
     private lateinit var notification: Notification
     var list = listOf<TableItem>()
-    var lock = true
     var job: Job? = null
     lateinit var lastAppId: String
     private val myBinder = MyLocalBinder()
@@ -44,13 +43,12 @@ class StartService : Service() {
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        qqq("onStartCommand executed with startId: $startId "+lock)
         if (intent != null) {
             val action = intent.action
             when (action) {
                 Actions.START.name -> startService()
                 Actions.STOP.name -> stopService()
-                else -> qqq("This should never happen. No action in the received intent")
+                else -> {}
             }
         }
         return START_STICKY
@@ -59,21 +57,17 @@ class StartService : Service() {
     override fun onCreate() {
         super.onCreate()
         lastAppId = packageName
-        qqq("The service has been created")
         notification = createNotification()
         startForeground(1, notification)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        qqq("The service has been destroyed")
-        //startService()
     }
 
     @OptIn(DelicateCoroutinesApi::class)
     private fun startService() {
         if (isServiceStarted) return
-        qqq("Starting the foreground service task")
         isServiceStarted = true
         setServiceState(this, ServiceState.STARTED)
         wakeLock =
@@ -87,7 +81,6 @@ class StartService : Service() {
     fun job() {
         job = CoroutineScope(Dispatchers.IO).launch {
             while (true) {
-                //qqq("JOB!"+lastAppId+" " + list.size)
                 delay(5000)
                 var lock = false
                 list.mapIndexed looper@ { ix, it ->
@@ -96,7 +89,6 @@ class StartService : Service() {
                         lastAppId != it.id &&
                         (System.currentTimeMillis() - it.timestamp) / 1000 > it.delay
                     ) {
-                       // qqq("RUN TASK" + lastAppId + "::" + it.id + " " + it.cls+ " "+(System.currentTimeMillis() - it.ts) / 1000)
                         if (lastAppId != packageName && lastAppId != "com.android.systemui") notification.contentIntent.send()
                         lock = true
                         val intent = Intent(Intent.ACTION_MAIN, null)
@@ -109,7 +101,7 @@ class StartService : Service() {
                         )
                         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
                         try { startActivity(intent) }
-                        catch (e: Exception) { qqq("ERROR RUN TASK"+e) }
+                        catch (_: Exception) { }
                         return@looper
                     }
                 }
@@ -117,7 +109,6 @@ class StartService : Service() {
         }
     }
     private fun stopService() {
-        qqq("Stopping the foreground service")
         try {
             wakeLock?.let {
                 if (it.isHeld) {
@@ -126,9 +117,7 @@ class StartService : Service() {
             }
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
-        } catch (e: Exception) {
-            qqq("Service stopped without being started: ${e.message}")
-        }
+        } catch (_: Exception) { }
         isServiceStarted = false
         setServiceState(this, ServiceState.STOPPED)
     }

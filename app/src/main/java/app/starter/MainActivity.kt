@@ -22,6 +22,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -38,6 +39,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -45,6 +47,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
@@ -58,6 +62,7 @@ import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -79,6 +84,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -111,21 +117,6 @@ class MainActivity : ComponentActivity() {
     private var isBound = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        fun requestPermissions() {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val hasPermission = ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
-                if (!hasPermission) {
-                    val requestPermissionLauncher = registerForActivityResult(
-                        ActivityResultContracts.RequestPermission(),
-                    ) { isGranted: Boolean -> }
-                  //  requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
-            }
-        }
-        if (myConnection == null && vm.list.isEmpty() == true) requestPermissions()
         bind()
         if (vm.list.isEmpty() == true) loading()
         else content()
@@ -168,16 +159,18 @@ class MainActivity : ComponentActivity() {
             }, IntentFilter(packageName + "APP_ID"))
         actionOnService(Actions.START)
     }
+    @OptIn(ExperimentalMaterial3Api::class)
     private fun content() {
         setContent {
+            val hasApps = vm.list.find { it.delay > 0 } != null
             val showSheet by vm.showSheet.collectAsState()
-            var switch by remember { mutableStateOf(true) } // For preview, initially show { mutableStateOf(vm.showSheet.value) } // For preview, initially show
+            var switch by remember { mutableStateOf(hasApps) }
+            var showInfo by remember { mutableStateOf(false) }
             var showTable by remember { mutableStateOf(false) }
             AppTheme {
                 Scaffold(
                     floatingActionButton = {
-                        val coroutineScope = rememberCoroutineScope()
-                        FloatingActionButton(onClick = { coroutineScope.launch {  } }) {
+                        FloatingActionButton(onClick = { showInfo = true  }) {
                             Icon(Icons.Default.Info, contentDescription = "Show Bottom Sheet")
                         }
                     },
@@ -193,6 +186,7 @@ class MainActivity : ComponentActivity() {
                                     .weight(1f)
                             )
                             Switch(
+                                enabled = hasApps,
                                 checked = switch,
                                 onCheckedChange = {
                                     if (myService?.job?.isActive == true) myService?.job?.cancel()
@@ -203,7 +197,6 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         fun callback(delay: Int) {
-                            qqq("cb "+delay)
                             val pref = getPreferences(this@MainActivity)
                             val index = vm.list.indexOfFirst { it.id == showSheet?.id }
                             if (index != -1) {
@@ -211,29 +204,14 @@ class MainActivity : ComponentActivity() {
                                     delay = delay, timestamp = System.currentTimeMillis()
                                 )
                             }
-                            if (delay > 0) {
-                                fun isAccessibilityServiceEnabled(
-                                    context: Context,
-                                    service: Class<out AccessibilityService?>
-                                ): Boolean {
-                                    val am = context.getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
-                                    val enabledServices: List<AccessibilityServiceInfo> =
-                                        am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-                                    for (enabledService in enabledServices) {
-                                        val enabledServiceInfo = enabledService.resolveInfo.serviceInfo
-                                        if (enabledServiceInfo.packageName == context.packageName &&
-                                            enabledServiceInfo.name == service.name
-                                        ) {
-                                            return true
-                                        }
-                                    }
-                                    return false
-                                }
+                            /*if (delay > 0) {
                                 if (!isAccessibilityServiceEnabled(this@MainActivity, AppService::class.java)) {
                                     val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                                     startActivity(intent)
                                 }
                             }
+
+                             */
                             if (delay == 0) pref.edit(commit = true) { remove(showSheet?.id) }
                             else pref.edit(commit = true) { putInt(showSheet?.id, delay) }
                             myService?.list = vm.list.filter { it.delay > 0 }
@@ -249,6 +227,30 @@ class MainActivity : ComponentActivity() {
                             onDismissRequest = { vm.showSheet.value = null },
                             callback = ::callback
                         )
+                        if (showInfo)
+                            BasicAlertDialog(
+                                onDismissRequest = { showInfo = false }
+                            ) {
+                                Surface(
+                                    modifier = Modifier
+                                        .wrapContentWidth(),
+                                    shape = MaterialTheme.shapes.large
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text("App Starter", fontSize = 18.sp)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("This app is a lets users restart any app on device with a specified period.", fontSize = 14.sp)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Button(
+                                            onClick = {
+                                                showInfo = false
+                                            }
+                                        ) {
+                                            Text("OK")
+                                        }
+                                    }
+                                }
+                            }
                     }
                 }
             }
@@ -300,7 +302,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            myService?.list = vm.list.filter { it.delay != 0 }
+            myService?.list = vm.list.filter { it.delay > 0 }
             content()
         }
     }
@@ -340,19 +342,7 @@ fun SimpleTable() {
 
 @Composable
 fun TableRow(item: TableItem) {
-    @SuppressLint("DefaultLocale")
-    fun formatMinutesToHHMMSS(totalSeconds: Int): String {
-        if (totalSeconds == Int.MAX_VALUE) return "--"
-        val hours = totalSeconds / 3600
-        val minutes = (totalSeconds % 3600) / 60
-        val seconds = totalSeconds % 60
-        val timeParts = mutableListOf<String>()
-        if (hours > 0) timeParts.add(hours.toString())
-        timeParts.add(minutes.toString())
-        timeParts.add(seconds.let { if (it < 10) "0$it" else it.toString() })
-        return timeParts.joinToString(":")
-    }
-    var expanded by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
     Row(
         modifier = Modifier
             .clickable { vm.showSheet.value = item }
@@ -379,10 +369,19 @@ fun TableRow(item: TableItem) {
         Spacer(modifier = Modifier.width(8.dp))
         Text(item.title, modifier = Modifier.weight(1f), overflow = TextOverflow.Ellipsis)
         Spacer(modifier = Modifier.width(8.dp))
-        qqq("DEL DISP "+item.delay)
         if (item.delay != 0)
             Button(
-                onClick = { expanded = true },
+                onClick = {
+                    if (isAccessibilityServiceEnabled(ctx, AppService::class.java) || item.delay > 0) {
+                        val pref = getPreferences(ctx)
+                        pref.edit(commit = true) { putInt(item.id, item.delay * -1) }
+                        val index = vm.list.indexOfFirst { it.id == item.id }
+                        if (index != -1)
+                            vm.list[index] = vm.list[index].copy(
+                                delay = item.delay * -1, timestamp = System.currentTimeMillis()
+                            )
+                    }
+                },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (item.delay <= 0) Color.Gray else Color.Green,
                 ),
@@ -400,20 +399,21 @@ fun BottomSheetWithSliderAndClose(
     onDismissRequest: () -> Unit,
     callback: (delay: Int) -> Unit
 ) {
-    @SuppressLint("DefaultLocale")
-    fun formatSecondsToHHMMSS(s: Float): String {
-        val seconds = s.toLong()
-        val hours = TimeUnit.SECONDS.toHours(seconds)
-        val minutes = TimeUnit.SECONDS.toMinutes(seconds) % 60
-        val remainingSeconds = seconds % 60
-        return when {
-            hours > 0 -> {
-                if (minutes > 0) String.format("%dhr %dmin", hours, minutes)
-                else String.format("%dhr %dmin", hours, minutes)
-            }
-            minutes > 0 -> String.format("%dmin %2dsec", minutes, remainingSeconds)
-            else -> String.format("%2dsec", remainingSeconds)
+    val ctx = LocalContext.current
+    if (item != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        var hasNotificationPermission by remember {
+            mutableStateOf(
+                ContextCompat.checkSelfPermission(
+                    ctx,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            )
         }
+        val permissionRequest =
+            rememberLauncherForActivityResult(contract = ActivityResultContracts.RequestPermission()) { result ->
+                hasNotificationPermission = result
+            }
+        LaunchedEffect(Unit) { permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS) }
     }
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true
@@ -464,8 +464,7 @@ fun BottomSheetWithSliderAndClose(
                         Icon(Icons.Outlined.Settings, contentDescription = null, modifier = Modifier.size(12.dp))
                         Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(36.dp).rotate(270f))
                     }
-                    Text(
-                        formatSecondsToHHMMSS(24 * 3600 * currentSliderValue.pow(3)))
+                    Text(formatMinutesToHHMMSS((24 * 3600 * currentSliderValue.pow(3)).toInt()))
                 }
                 Slider(
                     value = currentSliderValue,
@@ -477,16 +476,12 @@ fun BottomSheetWithSliderAndClose(
                         .padding(horizontal = 16.dp)
                 )
                 Spacer(modifier = Modifier.height(24.dp))
-                LaunchedEffect(Unit) {}
-
-                var ctx = LocalContext.current
-                if (showDialog.value) Dialog(onDismissRequest = {}) { }
                 Row(modifier = Modifier.fillMaxWidth()) {
                     Button(
                         onClick = { callback((currentSliderValue.pow(3) * 3600 * 24).toInt().unaryMinus()) },
                         colors = ButtonColors(
-                            containerColor = Color.White.copy(alpha = .5f),
-                            contentColor = ButtonDefaults.buttonColors().contentColor,
+                            containerColor = Color.White.copy(alpha = .3f),
+                            contentColor = Color.Black,
                             disabledContainerColor = ButtonDefaults.buttonColors().disabledContainerColor,
                             disabledContentColor = ButtonDefaults.buttonColors().disabledContentColor
                         ),
@@ -496,39 +491,73 @@ fun BottomSheetWithSliderAndClose(
                     }
                     Button(
                         onClick = {
-                            fun isAccessibilityServiceEnabled(
-                                context: Context,
-                                service: Class<out AccessibilityService?>
-                            ): Boolean {
-                                val am = context.getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
-                                val enabledServices: List<AccessibilityServiceInfo> =
-                                    am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-                                for (enabledService in enabledServices) {
-                                    val enabledServiceInfo = enabledService.resolveInfo.serviceInfo
-                                    if (enabledServiceInfo.packageName == context.packageName &&
-                                        enabledServiceInfo.name == service.name
-                                    ) {
-                                        return true
-                                    }
-                                }
-                                return false
-                            }
                             if (!isAccessibilityServiceEnabled(ctx, AppService::class.java)) { showDialog.value = true }
-                            if (!isAccessibilityServiceEnabled(ctx, AppService::class.java)) {
-                                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                                ctx.startActivity(intent)
-                            }
-                            callback((currentSliderValue.pow(3) * 3600 * 24).toInt()) },
+                            else callback((currentSliderValue.pow(3) * 3600 * 24).toInt())
+                        },
                         modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
                     ) {
                         Text("Apply")
                     }
                 }
+                if (showDialog.value)
+                    BasicAlertDialog(
+                        onDismissRequest = { showDialog.value = false }
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .wrapContentWidth(),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("App Starter", fontSize = 18.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("This feature requires Accessibility permission", fontSize = 14.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = {
+                                        showDialog.value = false
+                                        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                        ctx.startActivity(intent)
+                                    }
+                                ) {
+                                    Text("OK")
+                                }
+                            }
+                        }
+                    }
             }
         }
     }
 }
 
+fun isAccessibilityServiceEnabled(
+    context: Context,
+    service: Class<out AccessibilityService?>
+): Boolean {
+    val am = context.getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
+    val enabledServices: List<AccessibilityServiceInfo> =
+        am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+    for (enabledService in enabledServices) {
+        val enabledServiceInfo = enabledService.resolveInfo.serviceInfo
+        if (enabledServiceInfo.packageName == context.packageName &&
+            enabledServiceInfo.name == service.name
+        ) {
+            return true
+        }
+    }
+    return false
+}
+
+fun formatMinutesToHHMMSS(totalSeconds: Int): String {
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    val timeParts = mutableListOf<String>()
+    if (hours > 0) timeParts.add(hours.toString())
+    timeParts.add(minutes.let { if (it < 10) "0$it" else it.toString() })
+    timeParts.add(seconds.let { if (it < 10) "0$it" else it.toString() })
+    return timeParts.joinToString(":")
+}
 
 data class TableItem(
     val icon: Drawable?,
@@ -539,9 +568,6 @@ data class TableItem(
     var timestamp: Long,
 ) : Serializable
 
-fun qqq(text: String) {
-    Log.d("qqq", text)
-}
 
 class VM: ViewModel() {
     val list = mutableStateListOf<TableItem>()
