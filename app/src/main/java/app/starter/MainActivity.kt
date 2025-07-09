@@ -164,7 +164,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val hasApps = vm.list.find { it.delay > 0 } != null
             val showSheet by vm.showSheet.collectAsState()
-            var switch by remember { mutableStateOf(hasApps) }
+            var switch by remember(hasApps) { mutableStateOf(hasApps) }
             var showInfo by remember { mutableStateOf(false) }
             var showTable by remember { mutableStateOf(false) }
             AppTheme {
@@ -204,14 +204,6 @@ class MainActivity : ComponentActivity() {
                                     delay = delay, timestamp = System.currentTimeMillis()
                                 )
                             }
-                            /*if (delay > 0) {
-                                if (!isAccessibilityServiceEnabled(this@MainActivity, AppService::class.java)) {
-                                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                                    startActivity(intent)
-                                }
-                            }
-
-                             */
                             if (delay == 0) pref.edit(commit = true) { remove(showSheet?.id) }
                             else pref.edit(commit = true) { putInt(showSheet?.id, delay) }
                             myService?.list = vm.list.filter { it.delay > 0 }
