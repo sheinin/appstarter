@@ -4,7 +4,7 @@
 
 The app starts on boot complete via `BroadcastReceiver()`  
 Initiates background service on `Service()`  
-Uses `AccessibilityService()` to bring any app on device to front 
+Applies `AccessibilityService()` 
   
   
   
